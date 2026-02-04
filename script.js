@@ -1,47 +1,100 @@
- const form = document.getElementById("settingsForm");
-    const errorDiv = document.getElementById("error");
+let cart = new Map();
+let products = [];
 
-    // Object to store user preferences
-    let userPreferences = {
-      theme: "",
-      fontSize: 16,
-      primaryColor: "#007bff"
-    };
+// Load cart from localStorage
+const savedCart = localStorage.getItem("cart");
+if (savedCart) {
+  JSON.parse(savedCart).forEach(item => cart.set(item.id, item));
+}
 
-    form.addEventListener("submit", function (e) {
-      e.preventDefault();
-      errorDiv.textContent = "";
+// Fetch API-style JSON
+async function fetchProducts() {
+  const res = await fetch("products-api.json");
+  const json = await res.json();
+  return json.data;
+}
 
-      const theme = document.getElementById("theme").value;
-      const fontSize = Number(document.getElementById("fontSize").value);
-      const primaryColor = document.getElementById("primaryColor").value;
+// Save cart
+function saveCart() {
+  localStorage.setItem("cart", JSON.stringify([...cart.values()]));
+}
 
-      // Validation
-      if (!theme) {
-        errorDiv.textContent = "Please select a theme.";
-        return;
-      }
+// Render products
+function renderProducts(products) {
+  const productList = document.getElementById("productList");
+  productList.innerHTML = "";
 
-      if (fontSize < 12 || fontSize > 24 || isNaN(fontSize)) {
-        errorDiv.textContent = "Font size must be between 12 and 24.";
-        return;
-      }
-
-      // Update preferences object
-      userPreferences = {
-        theme,
-        fontSize,
-        primaryColor
-      };
-
-      // Apply theme
-      document.body.classList.toggle("dark", theme === "dark");
-
-      // Apply font size
-      document.documentElement.style.setProperty("--font-size", fontSize + "px");
-
-      // Apply primary color
-      document.documentElement.style.setProperty("--primary-color", primaryColor);
-
-      console.log("User Preferences:", userPreferences);
+  products
+    .filter(p => p.stock > 0)
+    .forEach(p => {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.innerHTML = `
+        <h3>${p.name}</h3>
+        <p>Price: ₹${p.price}</p>
+        <p>Stock: ${p.stock}</p>
+        <button onclick="addToCart(${p.id})">Add</button>
+      `;
+      productList.appendChild(div);
     });
+}
+
+// Add to cart
+function addToCart(id) {
+  if (cart.has(id)) {
+    cart.get(id).qty++;
+  } else {
+    const product = products.find(p => p.id === id);
+    cart.set(id, { ...product, qty: 1 });
+  }
+  saveCart();
+  renderCart();
+}
+
+// Remove from cart
+function removeFromCart(id) {
+  cart.delete(id);
+  saveCart();
+  renderCart();
+}
+
+// Render cart + total
+function renderCart() {
+  const cartList = document.getElementById("cartList");
+  cartList.innerHTML = "";
+
+  const items = [...cart.values()];
+
+  items.forEach(item => {
+    const discountedPrice =
+      item.price - (item.price * item.discount / 100);
+
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `
+      <h3>${item.name}</h3>
+      <p>Qty: ${item.qty}</p>
+      <p>Price: ₹${discountedPrice}</p>
+      <button onclick="removeFromCart(${item.id})">Remove</button>
+    `;
+    cartList.appendChild(div);
+  });
+
+  const total = items.reduce((sum, item) => {
+    const discounted =
+      item.price - (item.price * item.discount / 100);
+    return sum + discounted * item.qty;
+  }, 0);
+
+  document.getElementById("summary").innerHTML = `
+    <h3>Total Amount: ₹${total}</h3>
+    <p>Items: ${items.length}</p>
+  `;
+}
+
+// Init
+(async function init() {
+  products = await fetchProducts();
+  renderProducts(products);
+  renderCart();
+})();
